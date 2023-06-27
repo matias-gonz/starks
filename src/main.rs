@@ -1,4 +1,5 @@
 use starks::{field::FieldElement, polynomial::Polynomial};
+use sha256::digest;
 
 fn generate_trace(
     f: fn(FieldElement) -> FieldElement,
@@ -39,7 +40,7 @@ fn main() {
     let n = 20;
     let trace = generate_trace(f, x0, n);
     println!("Trace is {:?}", trace);
-    println!("No we calculate a suitable generator g modulo 3221225473");
+    println!("Now we calculate a suitable generator g modulo 3221225473");
     let pow = 5;
     let generator_size = 2usize.pow(pow);
     let g = FieldElement::generator().pow(3 * 2usize.pow(30 - pow));
@@ -61,12 +62,16 @@ fn main() {
     let f: Polynomial = Polynomial::interpolate(&xs, &trace);
     println!("Evaluate on a larger domain (8 times larger)");
     let eval_domain = generate_larger_domain();
+    let interpolated_f: Polynomial = Polynomial::interpolate(&xs, &trace);
+    let interpolated_f_eval: Vec<FieldElement> = eval_domain.into_iter().map(|d| interpolated_f.clone().eval(d)).collect();
+    let hashed = digest(format!("{:?}", interpolated_f_eval));
 
 }
 
 #[cfg(test)]
 mod test {
     use starks::{field::FieldElement, polynomial::Polynomial};
+    use sha256::digest;
 
     use crate::{generate_trace, generate_generator, generate_larger_domain};
 
@@ -96,11 +101,6 @@ mod test {
             b = b * g;
             let wrong_order = i + 1;
             assert!(b != FieldElement::one(), "g is of order {wrong_order}");
-        }    
-        if b * g == FieldElement::one() {
-            println!("Success!");
-        } else {
-            println!("g is of order > 1024");
         }
     }
 
@@ -130,6 +130,25 @@ mod test {
         for i in 0..160 {
             assert_eq!((w_inverse * eval_domain[1]).pow(i) * field_generator, eval_domain[i]);
         }
-        println!("Success!");
+    }
+
+    #[test]
+    fn evaluate_on_coset() {
+        let f = |x: FieldElement| x.pow(8);
+        let x0 = FieldElement::new(2);
+        let n = 20;
+        let trace = generate_trace(f, x0, n);
+
+        let G: Vec<FieldElement> = generate_generator();
+
+        let mut xs: Vec<FieldElement> = G.into_iter().rev().skip(1).rev().collect();
+        xs.truncate(20);
+
+        let eval_domain = generate_larger_domain();
+
+        let interpolated_f: Polynomial = Polynomial::interpolate(&xs, &trace);
+        let interpolated_f_eval: Vec<FieldElement> = eval_domain.into_iter().map(|d| interpolated_f.clone().eval(d)).collect();
+        let hashed = digest(format!("{:?}", interpolated_f_eval));
+        assert_eq!("ad75070407a245cee6d06b0d7446eb77884b802f348e84222fe37fc394cdf02d".to_string(), hashed);
     }
 }
