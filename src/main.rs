@@ -1,4 +1,4 @@
-use starks::{field::FieldElement, polynomial::Polynomial};
+use starks::{field::FieldElement, polynomial::{Polynomial, x}};
 use sha256::digest;
 
 fn generate_trace(
@@ -40,6 +40,7 @@ fn main() {
     let n = 20;
     let trace = generate_trace(f, x0, n);
     println!("Trace is {:?}", trace);
+
     println!("Now we calculate a suitable generator g modulo 3221225473");
     let pow = 5;
     let generator_size = 2usize.pow(pow);
@@ -56,21 +57,33 @@ fn main() {
     } else {
         println!("g is of order > 20");
     }
+
     println!("Let's interpolate the Polynomial");
     let mut xs: Vec<FieldElement> = G.into_iter().rev().skip(1).rev().collect();
     xs.truncate(20);
     let f: Polynomial = Polynomial::interpolate(&xs, &trace);
+    for i in 0..(19) {
+        println!("X: {:?} -> Trace: {:?}", xs[i], trace[i]);
+    }
+
     println!("Evaluate on a larger domain (8 times larger)");
-    let eval_domain = generate_larger_domain();
+    let eval_domain: Vec<FieldElement> = generate_larger_domain();
     let interpolated_f: Polynomial = Polynomial::interpolate(&xs, &trace);
     let interpolated_f_eval: Vec<FieldElement> = eval_domain.into_iter().map(|d| interpolated_f.clone().eval(d)).collect();
     let hashed = digest(format!("{:?}", interpolated_f_eval));
+
+    println!("Evaluate first constraint that if f(x) - 2 = 0");
+    let numer0: Polynomial = f.clone() - FieldElement::new(2);
+    let denom0: Polynomial = x() - FieldElement::new(2);
+    println!("The reminder of the division is : {:?}", numer0.clone() % denom0.clone());
+    let p0: Polynomial = numer0 / denom0;
+    println!("The result of the division is a polynomial: {:?}", p0);
 
 }
 
 #[cfg(test)]
 mod test {
-    use starks::{field::FieldElement, polynomial::Polynomial};
+    use starks::{field::FieldElement, polynomial::{Polynomial, x}};
     use sha256::digest;
 
     use crate::{generate_trace, generate_generator, generate_larger_domain};
@@ -150,5 +163,28 @@ mod test {
         let interpolated_f_eval: Vec<FieldElement> = eval_domain.into_iter().map(|d| interpolated_f.clone().eval(d)).collect();
         let hashed = digest(format!("{:?}", interpolated_f_eval));
         assert_eq!("ad75070407a245cee6d06b0d7446eb77884b802f348e84222fe37fc394cdf02d".to_string(), hashed);
+    }
+
+    #[test]
+    fn evaluate_first_constraint() {
+        let f = |x: FieldElement| x.pow(8);
+        let x0 = FieldElement::new(2);
+        let n = 20;
+        let trace = generate_trace(f, x0, n);
+
+        let G: Vec<FieldElement> = generate_generator();
+
+        let mut xs: Vec<FieldElement> = G.into_iter().rev().skip(1).rev().collect();
+        xs.truncate(20);
+
+        let eval_domain = generate_larger_domain();
+
+        let interpolated_f: Polynomial = Polynomial::interpolate(&xs, &trace);
+        let interpolated_f_eval: Vec<FieldElement> = eval_domain.into_iter().map(|d| interpolated_f.clone().eval(d)).collect();
+        let hashed = digest(format!("{:?}", interpolated_f_eval));
+
+        let numer0: Polynomial = interpolated_f.clone() - FieldElement::new(2);
+        let denom0: Polynomial = x() - FieldElement::new(2);
+        let p0: Polynomial = numer0 / denom0;
     }
 }
