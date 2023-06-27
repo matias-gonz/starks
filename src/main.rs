@@ -74,7 +74,7 @@ fn main() {
 
     println!("Evaluate first constraint that if f(x) - 2 = 0");
     let numer0: Polynomial = f.clone() - FieldElement::new(2);
-    let denom0: Polynomial = x() - FieldElement::new(2);
+    let denom0: Polynomial = x() - FieldElement::one();
     println!("The reminder of the division is : {:?}", numer0.clone() % denom0.clone());
     let p0: Polynomial = numer0 / denom0;
     println!("The result of the division is a polynomial: {:?}", p0);
@@ -184,7 +184,9 @@ mod test {
         let hashed = digest(format!("{:?}", interpolated_f_eval));
 
         let numer0: Polynomial = interpolated_f.clone() - FieldElement::new(2);
-        let denom0: Polynomial = x() - FieldElement::new(2);
+        let denom0: Polynomial = x() - FieldElement::one();
+        let nullPolCoef: Vec<FieldElement> = [].to_vec();
+        assert_eq!(numer0.clone() % denom0.clone(), Polynomial::new(&nullPolCoef));
         let p0: Polynomial = numer0 / denom0;
     }
 }
