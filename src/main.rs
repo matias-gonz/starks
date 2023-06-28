@@ -252,98 +252,69 @@ fn case_1() {
 }
 
 fn case_2() {
-    println!("First we generate the trace. a0 is 2 and then we calculate the first 61 elements an+1 = an^2");
+    let mut channel = Channel::new();
+    // First we generate the trace. a0 is 2 and then we calculate the first 61 elements an+1 = an^2
     let f = |x: FieldElement| x.pow(2);
     let x0 = FieldElement::new(2);
     let n = 61;
     let trace = generate_trace(f, x0, n);
-    println!("Trace is {:?}", trace);
 
-    println!("Now we calculate a suitable generator g modulo 3221225473");
+    // Generator should have order 64 = 2^6
     let pow = 6;
-    let generator_size = 2usize.pow(pow);
     let g = FieldElement::generator().pow(3 * 2usize.pow(30 - pow));
-    println!("g is {:?}", g);
-    let G: Vec<FieldElement> = (0..generator_size).into_iter().map(|i| g.pow(i)).collect();
-    let mut b = FieldElement::one();
-    for i in 0..(generator_size - 1) {
-        println!("b is {:?} and G[i] is {:?}", b, G[i]);
-        b = b * g;
-    }
-    if b * g == FieldElement::one() {
-        println!("Success!");
-    } else {
-        println!("g is of order > 61");
-    }
+    let G: Vec<FieldElement> = (0..n).map(|i| g.pow(i)).collect();
 
-    println!("Let's interpolate the Polynomial");
-    let mut xs: Vec<FieldElement> = G.into_iter().rev().skip(3).rev().collect();
-    let f: Polynomial = Polynomial::interpolate(&xs, &trace);
-    for i in 0..(61) {
-        println!("X: {:?} -> Trace: {:?}", xs[i], trace[i]);
-    }
+    // Generate a larger domain: blowup of 8 = 2^3 => Generator should have order  512 = 2^(6 + 3)
+    let blowup = 3;
+    let w = FieldElement::generator();
+    let h = w.pow(3 * 2usize.pow(30 - (pow + blowup)));
+    let H: Vec<FieldElement> = (0..n * 2_usize.pow(blowup)).map(|i| h.pow(i)).collect();
+    let eval_domain: Vec<FieldElement> = H.into_iter().map(|x| w * x).collect();
 
-    println!("Evaluate on a larger domain (8 times larger)");
-    let eval_domain: Vec<FieldElement> = generate_larger_domain();
-    let interpolated_f: Polynomial = Polynomial::interpolate(&xs, &trace);
+    // Interpolate the trace on the first 21 elements of G
+    let interpolated_f: Polynomial = Polynomial::interpolate(&G, &trace);
     let interpolated_f_eval: Vec<FieldElement> = eval_domain
         .clone()
         .into_iter()
         .map(|d| interpolated_f.clone().eval(d))
         .collect();
-    let hashed = digest(format!("{:?}", interpolated_f_eval));
 
-    println!("Evaluate first constraint that if f(x) - 2 = 0");
-    let numer0: Polynomial = f.clone() - FieldElement::new(2);
-    let denom0: Polynomial = x() - FieldElement::one();
-    let p0: Polynomial = numer0.clone() / denom0.clone();
-    println!("The result of the division is a polynomial: {:?}", p0);
-    println!("Degree of num p0: {:?}", Polynomial::degree(&numer0));
-    println!("Degree of den p0: {:?}", Polynomial::degree(&denom0));
-    println!("Degree of p0: {:?}", Polynomial::degree(&p0));
+    // Commit interpolation
+    let f_merkle = MerkleTree::new(interpolated_f_eval);
+    channel.send(f_merkle.root());
 
-    println!("Evaluate second constraint: (f(g.x) - (f(x))^2)) / (x - g ^ 0) ... (x - g ^ 39)");
-    let numer1: Polynomial = f(x() * g);
-    let numer2: Polynomial =
-        f.pow(2) * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
+    // First constraint: f(x) = 2
+    let numer0 = interpolated_f.clone() - FieldElement::new(2);
+    let denom0 = x() - FieldElement::one();
+    let p0 = numer0 / denom0;
+
+    // Second constraint: (f(g.x) - (f(x))^2)) / (x - g ^ 0) ... (x - g ^ 39)");
+    let minus_one = FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
+    let numer1: Polynomial = interpolated_f(x() * g);
+    let numer2: Polynomial = interpolated_f.pow(2) * minus_one;
     let numer = numer1 + numer2;
-    let denom1 = (x().pow(64usize) - 1);
-    let denom2: Vec<Polynomial> = (60..64).into_iter().map(|i| x() - g.pow(i)).collect();
+    let denom1 = x().pow(64usize) - 1;
+    let denom2: Vec<Polynomial> = (60..64).map(|i| x() - g.pow(i)).collect();
     let denom2 = Polynomial::prod(&denom2);
-    let denom = (denom1 / denom2);
-    let p1: Polynomial = numer.clone() / denom.clone();
-    println!("Degree of num p1: {:?}", Polynomial::degree(&numer));
-    println!("Degree of den p1: {:?}", Polynomial::degree(&denom));
-    println!("Degree of p1: {:?}", Polynomial::degree(&p1));
+    let denom = denom1 / denom2;
+    let p1: Polynomial = numer / denom;
 
-    println!("Composition Polynomial");
-    let mut test_channel: Channel = Channel::new();
-    let cp0: Polynomial = get_CP(p0.clone(), p1.clone(), &mut test_channel);
-    let cp_test_degree = cp0.degree();
-    assert_eq!(
-        cp0.degree(),
-        60,
-        "The degree of cp is {cp_test_degree} when it should be 140."
-    );
-
-    println!("Commit on the Composition Polynomial");
-
-    let mut channel = Channel::new();
-    let (cp, cp_evaluation) = cp_eval(p0.clone(), p1.clone(), eval_domain.clone(), &mut channel);
+    // Commit on the Composition Polynomial
+    let (cp, cp_evaluation) = cp_eval(p0, p1, eval_domain.clone(), &mut channel);
     let cp_merkle: MerkleTree = MerkleTree::new(cp_evaluation.clone());
     channel.send(cp_merkle.root());
 
-    let next_domain = next_fri_domain(eval_domain.clone());
+    // Commit FRI
     let (fri_layers, fri_merkles) = fri_commit(
         cp,
-        eval_domain.clone(),
+        eval_domain,
         cp_evaluation.clone(),
         cp_merkle.clone(),
         &mut channel,
     );
 
     let cp_eval_len = cp_evaluation.len();
-    for _ in (0..32) {
+    for _ in 0..32 {
         decommit_on_query(
             channel.receive_random_int(0, cp_eval_len - 17, true),
             &mut channel,
@@ -412,7 +383,11 @@ fn case_3() {
         f.pow(2) * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
     let numer_c1 = numer1_c1 + numer2_c1;
     let denom1_c1 = (x().pow(32usize) - 1);
-    let denom2_c1: Vec<Polynomial> = (40..64).into_iter().filter(|&num| num % 2 == 0).map(|i| x() - g.pow(i)).collect();
+    let denom2_c1: Vec<Polynomial> = (40..64)
+        .into_iter()
+        .filter(|&num| num % 2 == 0)
+        .map(|i| x() - g.pow(i))
+        .collect();
     let denom2_c1 = Polynomial::prod(&denom2_c1);
     let denom_c1 = (denom1_c1 / denom2_c1);
     let p1: Polynomial = numer_c1.clone() / denom_c1.clone();
@@ -426,21 +401,24 @@ fn case_3() {
         f.pow(4) * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
     let numer_c2 = numer1_c2 + numer2_c2;
     let denom1_c2 = (x().pow(32usize) - 1);
-    let denom2_c2: Vec<Polynomial> = (40..64).into_iter().filter(|&num| num % 2 != 0).map(|i| x() - g.pow(i)).collect();
+    let denom2_c2: Vec<Polynomial> = (40..64)
+        .into_iter()
+        .filter(|&num| num % 2 != 0)
+        .map(|i| x() - g.pow(i))
+        .collect();
     let denom2_c2 = Polynomial::prod(&denom2_c2);
     let denom_c2 = (denom1_c2 / denom2_c2);
     let p2: Polynomial = numer_c2.clone() / denom_c2.clone();
     println!("Degree of num p1: {:?}", Polynomial::degree(&numer_c2));
     println!("Degree of den p1: {:?}", Polynomial::degree(&denom_c2));
     println!("Degree of p1: {:?}", Polynomial::degree(&p2));
-    
 }
 
 fn main() {
     println!("CASE 1");
     case_1();
     println!("CASE 2");
-    //case_2();
+    case_2();
     println!("CASE 3");
     //case_3();
 }
