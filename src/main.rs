@@ -436,7 +436,7 @@ fn main() {
     println!("Proof size: {:?}", proof_size_1);
     println!("Computation time: {:?}", computation_time_1);
 
-    println!("Case 2: an+1 = an^8");
+    println!("Case 2: an+1 = an^2");
     let start_time_2 = SystemTime::now();
     let proof_2 = case_2();
     let end_time_2 = SystemTime::now();
