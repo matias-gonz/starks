@@ -264,12 +264,11 @@ fn case_1() {
         cp_merkle.clone(),
         &mut channel,
     );
-    println!("{:?}", channel.proof);
 
     let cp_eval_len = cp_evaluation.len();
-    for query in (0..32) {
+    for _ in (0..32) {
         decommit_on_query(
-            channel.receive_random_int(0, cp_eval_len - 16, true),
+            channel.receive_random_int(0, cp_eval_len - 17, true),
             &mut channel,
             cp_evaluation.clone(),
             cp_merkle.clone(),
@@ -367,9 +366,21 @@ fn case_2() {
         cp,
         eval_domain.clone(),
         cp_evaluation.clone(),
-        cp_merkle,
+        cp_merkle.clone(),
         &mut channel,
     );
+
+    let cp_eval_len = cp_evaluation.len();
+    for _ in (0..32) {
+        decommit_on_query(
+            channel.receive_random_int(0, cp_eval_len - 17, true),
+            &mut channel,
+            cp_evaluation.clone(),
+            cp_merkle.clone(),
+            fri_layers.clone(),
+            fri_merkles.clone(),
+        );
+    }
     println!("{:?}", channel.proof);
 }
 
