@@ -1,5 +1,10 @@
-use starks::{field::FieldElement, polynomial::{Polynomial, x}, channel::Channel, merkle_tree::MerkleTree};
 use sha256::digest;
+use starks::{
+    channel::Channel,
+    field::FieldElement,
+    merkle_tree::MerkleTree,
+    polynomial::{x, Polynomial},
+};
 
 fn generate_trace(
     f: fn(FieldElement) -> FieldElement,
@@ -28,7 +33,7 @@ fn generate_larger_domain() -> Vec<FieldElement> {
     //We will use a blowup of 8. 8*|D0| = 8*20 = 160
     let exp = (2usize.pow(30) * 3) / 160;
     let h = w.pow(exp);
-    let H: Vec<FieldElement> = (0..160).into_iter().map(|i| h.pow(i)).collect(); 
+    let H: Vec<FieldElement> = (0..160).into_iter().map(|i| h.pow(i)).collect();
     let eval_domain: Vec<FieldElement> = H.into_iter().map(|x| w * x).collect();
     eval_domain
 }
@@ -39,7 +44,12 @@ fn get_CP(p0: Polynomial, p1: Polynomial, channel: &mut Channel) -> Polynomial {
     (p0 * alpha0) + (p1 * alpha1)
 }
 
-fn cp_eval(p0: Polynomial, p1: Polynomial, domain: Vec<FieldElement>, channel: &mut Channel) -> (Polynomial, Vec<FieldElement>) {
+fn cp_eval(
+    p0: Polynomial,
+    p1: Polynomial,
+    domain: Vec<FieldElement>,
+    channel: &mut Channel,
+) -> (Polynomial, Vec<FieldElement>) {
     let cp = get_CP(p0, p1, channel);
     let cp_evaluation = domain.into_iter().map(|d| cp(d)).collect();
     (cp, cp_evaluation)
@@ -47,25 +57,50 @@ fn cp_eval(p0: Polynomial, p1: Polynomial, domain: Vec<FieldElement>, channel: &
 
 fn next_fri_domain(fri_domain: Vec<FieldElement>) -> Vec<FieldElement> {
     let fri_domain_len = fri_domain.len();
-    fri_domain.into_iter().take(fri_domain_len / 2).map(|x| x.pow(2)).collect()
+    fri_domain
+        .into_iter()
+        .take(fri_domain_len / 2)
+        .map(|x| x.pow(2))
+        .collect()
 }
 
-fn next_fri_polynomial(poly: Polynomial,  beta: FieldElement) -> Polynomial {
-    let odd_coefficients: Vec<FieldElement> = poly.0.clone().into_iter().skip(1).step_by(2).collect();
+fn next_fri_polynomial(poly: Polynomial, beta: FieldElement) -> Polynomial {
+    let odd_coefficients: Vec<FieldElement> =
+        poly.0.clone().into_iter().skip(1).step_by(2).collect();
     let even_coefficients: Vec<FieldElement> = poly.0.into_iter().step_by(2).collect();
     let odd = Polynomial::new(&odd_coefficients) * beta;
     let even = Polynomial::new(&even_coefficients);
     odd + even
 }
 
-fn next_fri_layer(poly: Polynomial, domain: Vec<FieldElement>, beta: FieldElement) -> (Polynomial, Vec<FieldElement>, Vec<FieldElement>) {
+fn next_fri_layer(
+    poly: Polynomial,
+    domain: Vec<FieldElement>,
+    beta: FieldElement,
+) -> (Polynomial, Vec<FieldElement>, Vec<FieldElement>) {
     let next_poly = next_fri_polynomial(poly, beta);
     let next_domain = next_fri_domain(domain);
-    let next_layer: Vec<FieldElement> = next_domain.clone().into_iter().map(|x| next_poly(x)).collect();
+    let next_layer: Vec<FieldElement> = next_domain
+        .clone()
+        .into_iter()
+        .map(|x| next_poly(x))
+        .collect();
     (next_poly, next_domain, next_layer)
 }
 
-fn fri_commit(cp: Polynomial, domain: Vec<FieldElement>, cp_eval: Vec<FieldElement>, cp_merkle: MerkleTree, channel: &mut Channel) -> (Vec<Polynomial>, Vec<Vec<FieldElement>>, Vec<Vec<FieldElement>>, Vec<MerkleTree>, Channel) {   
+fn fri_commit(
+    cp: Polynomial,
+    domain: Vec<FieldElement>,
+    cp_eval: Vec<FieldElement>,
+    cp_merkle: MerkleTree,
+    channel: &mut Channel,
+) -> (
+    Vec<Polynomial>,
+    Vec<Vec<FieldElement>>,
+    Vec<Vec<FieldElement>>,
+    Vec<MerkleTree>,
+    Channel,
+) {
     let mut fri_polys: Vec<Polynomial> = vec![cp];
     let mut fri_domains: Vec<Vec<FieldElement>> = vec![domain];
     let mut fri_layers: Vec<Vec<FieldElement>> = vec![cp_eval];
@@ -83,10 +118,16 @@ fn fri_commit(cp: Polynomial, domain: Vec<FieldElement>, cp_eval: Vec<FieldEleme
     }
     channel.send(fri_polys.last().unwrap().0[0].0.to_string());
 
-    (fri_polys, fri_domains, fri_layers, fri_merkles, channel.clone())
+    (
+        fri_polys,
+        fri_domains,
+        fri_layers,
+        fri_merkles,
+        channel.clone(),
+    )
 }
 
-fn main() {
+fn case_1() {
     println!("First we generate the trace. a0 is 2 and then we calculate the first 20 elements an+1 = an^8");
     let f = |x: FieldElement| x.pow(8);
     let x0 = FieldElement::new(2);
@@ -121,7 +162,11 @@ fn main() {
     println!("Evaluate on a larger domain (8 times larger)");
     let eval_domain: Vec<FieldElement> = generate_larger_domain();
     let interpolated_f: Polynomial = Polynomial::interpolate(&xs, &trace);
-    let interpolated_f_eval: Vec<FieldElement> = eval_domain.clone().into_iter().map(|d| interpolated_f.clone().eval(d)).collect();
+    let interpolated_f_eval: Vec<FieldElement> = eval_domain
+        .clone()
+        .into_iter()
+        .map(|d| interpolated_f.clone().eval(d))
+        .collect();
     let hashed = digest(format!("{:?}", interpolated_f_eval));
 
     println!("Evaluate first constraint that if f(x) - 2 = 0");
@@ -135,7 +180,8 @@ fn main() {
 
     println!("Evaluate second constraint: (f(g.x) - (f(x))^8)) / (x - g ^ 0) ... (x - g ^ 19)");
     let numer1: Polynomial = f(x() * g);
-    let numer2: Polynomial = f.pow(8) * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
+    let numer2: Polynomial =
+        f.pow(8) * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
     let numer = numer1 + numer2;
     let denom1 = (x().pow(32usize) - 1);
     let denom2: Vec<Polynomial> = (20..32).into_iter().map(|i| x() - g.pow(i)).collect();
@@ -150,28 +196,144 @@ fn main() {
     let mut test_channel: Channel = Channel::new();
     let cp0: Polynomial = get_CP(p0.clone(), p1.clone(), &mut test_channel);
     let cp_test_degree = cp0.degree();
-    assert_eq!(cp0.degree(), 140, "The degree of cp is {cp_test_degree} when it should be 140.");
+    assert_eq!(
+        cp0.degree(),
+        140,
+        "The degree of cp is {cp_test_degree} when it should be 140."
+    );
 
     println!("Commit on the Composition Polynomial");
-    
+
     let mut channel = Channel::new();
     let (cp, cp_evaluation) = cp_eval(p0.clone(), p1.clone(), eval_domain.clone(), &mut channel);
     let cp_merkle: MerkleTree = MerkleTree::new(cp_evaluation.clone());
     channel.send(cp_merkle.root());
-    assert_eq!(cp_merkle.root(), "1a597404307c5e3032e6932e8f7d6be23c546374ff2b914fdff5a38915e0ccef", "Merkle tree root is wrong.");
-    
-    let next_domain = next_fri_domain(eval_domain.clone());
-    let (fri_polys, fri_domains, fri_layers, fri_merkles, channel) = fri_commit(cp, eval_domain.clone(), cp_evaluation.clone(), cp_merkle, &mut channel);
-    println!("{:?}", channel.proof);
+    assert_eq!(
+        cp_merkle.root(),
+        "1a597404307c5e3032e6932e8f7d6be23c546374ff2b914fdff5a38915e0ccef",
+        "Merkle tree root is wrong."
+    );
 
+    let next_domain = next_fri_domain(eval_domain.clone());
+    let (fri_polys, fri_domains, fri_layers, fri_merkles, channel) = fri_commit(
+        cp,
+        eval_domain.clone(),
+        cp_evaluation.clone(),
+        cp_merkle,
+        &mut channel,
+    );
+    println!("{:?}", channel.proof);
+}
+
+fn case_2() {
+    println!("First we generate the trace. a0 is 2 and then we calculate the first 61 elements an+1 = an^2");
+    let f = |x: FieldElement| x.pow(2);
+    let x0 = FieldElement::new(2);
+    let n = 61;
+    let trace = generate_trace(f, x0, n);
+    println!("Trace is {:?}", trace);
+
+    println!("Now we calculate a suitable generator g modulo 3221225473");
+    let pow = 6;
+    let generator_size = 2usize.pow(pow);
+    let g = FieldElement::generator().pow(3 * 2usize.pow(30 - pow));
+    println!("g is {:?}", g);
+    let G: Vec<FieldElement> = (0..generator_size).into_iter().map(|i| g.pow(i)).collect();
+    let mut b = FieldElement::one();
+    for i in 0..(generator_size - 1) {
+        println!("b is {:?} and G[i] is {:?}", b, G[i]);
+        b = b * g;
+    }
+    if b * g == FieldElement::one() {
+        println!("Success!");
+    } else {
+        println!("g is of order > 61");
+    }
+
+    println!("Let's interpolate the Polynomial");
+    let mut xs: Vec<FieldElement> = G.into_iter().rev().skip(3).rev().collect();
+    let f: Polynomial = Polynomial::interpolate(&xs, &trace);
+    for i in 0..(61) {
+        println!("X: {:?} -> Trace: {:?}", xs[i], trace[i]);
+    }
+
+    println!("Evaluate on a larger domain (8 times larger)");
+    let eval_domain: Vec<FieldElement> = generate_larger_domain();
+    let interpolated_f: Polynomial = Polynomial::interpolate(&xs, &trace);
+    let interpolated_f_eval: Vec<FieldElement> = eval_domain
+        .clone()
+        .into_iter()
+        .map(|d| interpolated_f.clone().eval(d))
+        .collect();
+    let hashed = digest(format!("{:?}", interpolated_f_eval));
+
+    println!("Evaluate first constraint that if f(x) - 2 = 0");
+    let numer0: Polynomial = f.clone() - FieldElement::new(2);
+    let denom0: Polynomial = x() - FieldElement::one();
+    let p0: Polynomial = numer0.clone() / denom0.clone();
+    println!("The result of the division is a polynomial: {:?}", p0);
+    println!("Degree of num p0: {:?}", Polynomial::degree(&numer0));
+    println!("Degree of den p0: {:?}", Polynomial::degree(&denom0));
+    println!("Degree of p0: {:?}", Polynomial::degree(&p0));
+
+    println!("Evaluate second constraint: (f(g.x) - (f(x))^8)) / (x - g ^ 0) ... (x - g ^ 19)");
+    let numer1: Polynomial = f(x() * g);
+    let numer2: Polynomial =
+        f.pow(2) * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
+    let numer = numer1 + numer2;
+    let denom1 = (x().pow(64usize) - 1);
+    let denom2: Vec<Polynomial> = (60..64).into_iter().map(|i| x() - g.pow(i)).collect();
+    let denom2 = Polynomial::prod(&denom2);
+    let denom = (denom1 / denom2);
+    let p1: Polynomial = numer.clone() / denom.clone();
+    println!("Degree of num p1: {:?}", Polynomial::degree(&numer));
+    println!("Degree of den p1: {:?}", Polynomial::degree(&denom));
+    println!("Degree of p1: {:?}", Polynomial::degree(&p1));
+
+    println!("Composition Polynomial");
+    let mut test_channel: Channel = Channel::new();
+    let cp0: Polynomial = get_CP(p0.clone(), p1.clone(), &mut test_channel);
+    let cp_test_degree = cp0.degree();
+    assert_eq!(
+        cp0.degree(),
+        60,
+        "The degree of cp is {cp_test_degree} when it should be 140."
+    );
+
+    println!("Commit on the Composition Polynomial");
+
+    let mut channel = Channel::new();
+    let (cp, cp_evaluation) = cp_eval(p0.clone(), p1.clone(), eval_domain.clone(), &mut channel);
+    let cp_merkle: MerkleTree = MerkleTree::new(cp_evaluation.clone());
+    channel.send(cp_merkle.root());
+
+    let next_domain = next_fri_domain(eval_domain.clone());
+    let (fri_polys, fri_domains, fri_layers, fri_merkles, channel) = fri_commit(
+        cp,
+        eval_domain.clone(),
+        cp_evaluation.clone(),
+        cp_merkle,
+        &mut channel,
+    );
+    println!("{:?}", channel.proof);
+}
+
+fn main() {
+    //case_1();
+    case_2();
 }
 
 #[cfg(test)]
 mod test {
-    use starks::{field::FieldElement, polynomial::{Polynomial, x}, channel::Channel, merkle_tree::MerkleTree};
     use sha256::digest;
+    use starks::{
+        channel::Channel,
+        field::FieldElement,
+        merkle_tree::MerkleTree,
+        polynomial::{x, Polynomial},
+    };
 
-    use crate::{generate_trace, generate_generator, generate_larger_domain, get_CP, cp_eval};
+    use crate::{cp_eval, generate_generator, generate_larger_domain, generate_trace, get_CP};
 
     #[test]
     fn test_generate_trace() {
@@ -192,10 +354,16 @@ mod test {
         let generator_size = 2usize.pow(pow);
         let g = FieldElement::generator().pow(3 * 2usize.pow(30 - pow));
         let G: Vec<FieldElement> = generate_generator();
-        assert!(g.is_order(generator_size), "The generator g is of wrong order.");
+        assert!(
+            g.is_order(generator_size),
+            "The generator g is of wrong order."
+        );
         let mut b = FieldElement::one();
         for i in 0..(generator_size - 1) {
-            assert_eq!(b, G[i], "The i-th place in G is not equal to the i-th power of g.");
+            assert_eq!(
+                b, G[i],
+                "The i-th place in G is not equal to the i-th power of g."
+            );
             b = b * g;
             let wrong_order = i + 1;
             assert!(b != FieldElement::one(), "g is of order {wrong_order}");
@@ -225,7 +393,10 @@ mod test {
         let w_inverse = w.inverse();
 
         for i in 0..160 {
-            assert_eq!((w_inverse * eval_domain[1]).pow(i) * field_generator, eval_domain[i]);
+            assert_eq!(
+                (w_inverse * eval_domain[1]).pow(i) * field_generator,
+                eval_domain[i]
+            );
         }
     }
 
@@ -243,9 +414,15 @@ mod test {
         let eval_domain = generate_larger_domain();
 
         let interpolated_f: Polynomial = Polynomial::interpolate(&xs, &trace);
-        let interpolated_f_eval: Vec<FieldElement> = eval_domain.into_iter().map(|d| interpolated_f.clone().eval(d)).collect();
+        let interpolated_f_eval: Vec<FieldElement> = eval_domain
+            .into_iter()
+            .map(|d| interpolated_f.clone().eval(d))
+            .collect();
         let hashed = digest(format!("{:?}", interpolated_f_eval));
-        assert_eq!("d53fbc8273b1e58ef0f8d00a6c4d8eac5c2b0ec2ea767a114e7403957e77914e".to_string(), hashed);
+        assert_eq!(
+            "d53fbc8273b1e58ef0f8d00a6c4d8eac5c2b0ec2ea767a114e7403957e77914e".to_string(),
+            hashed
+        );
     }
 
     #[test]
@@ -263,17 +440,24 @@ mod test {
         let eval_domain = generate_larger_domain();
 
         let interpolated_f: Polynomial = Polynomial::interpolate(&xs, &trace);
-        let interpolated_f_eval: Vec<FieldElement> = eval_domain.into_iter().map(|d| interpolated_f.clone().eval(d)).collect();
+        let interpolated_f_eval: Vec<FieldElement> = eval_domain
+            .into_iter()
+            .map(|d| interpolated_f.clone().eval(d))
+            .collect();
         let hashed = digest(format!("{:?}", interpolated_f_eval));
 
         let numer0: Polynomial = interpolated_f.clone() - FieldElement::new(2);
         let denom0: Polynomial = x() - FieldElement::one();
         let nullPolCoef: Vec<FieldElement> = [].to_vec();
-        assert_eq!(numer0.clone() % denom0.clone(), Polynomial::new(&nullPolCoef));
+        assert_eq!(
+            numer0.clone() % denom0.clone(),
+            Polynomial::new(&nullPolCoef)
+        );
         let p0: Polynomial = numer0 / denom0;
 
         let numer1: Polynomial = interpolated_f(x() * g);
-        let numer2: Polynomial = interpolated_f.pow(8) * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
+        let numer2: Polynomial = interpolated_f.pow(8)
+            * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
         let numer = numer1 + numer2;
         let denom1 = (x().pow(32usize) - 1);
         let denom2: Vec<Polynomial> = (19..32).into_iter().map(|i| x() - g.pow(i)).collect();
@@ -281,7 +465,6 @@ mod test {
         let denom = (denom1 / denom2);
         assert_eq!(numer.clone() % denom.clone(), Polynomial::new(&nullPolCoef));
         let p1: Polynomial = numer / denom;
-
     }
 
     #[test]
@@ -299,17 +482,25 @@ mod test {
         let eval_domain = generate_larger_domain();
 
         let interpolated_f: Polynomial = Polynomial::interpolate(&xs, &trace);
-        let interpolated_f_eval: Vec<FieldElement> = eval_domain.clone().into_iter().map(|d| interpolated_f.clone().eval(d)).collect();
+        let interpolated_f_eval: Vec<FieldElement> = eval_domain
+            .clone()
+            .into_iter()
+            .map(|d| interpolated_f.clone().eval(d))
+            .collect();
         let hashed = digest(format!("{:?}", interpolated_f_eval));
 
         let numer0: Polynomial = interpolated_f.clone() - FieldElement::new(2);
         let denom0: Polynomial = x() - FieldElement::one();
         let nullPolCoef: Vec<FieldElement> = [].to_vec();
-        assert_eq!(numer0.clone() % denom0.clone(), Polynomial::new(&nullPolCoef));
+        assert_eq!(
+            numer0.clone() % denom0.clone(),
+            Polynomial::new(&nullPolCoef)
+        );
         let p0: Polynomial = numer0 / denom0;
 
         let numer1: Polynomial = interpolated_f(x() * g);
-        let numer2: Polynomial = interpolated_f.pow(8) * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
+        let numer2: Polynomial = interpolated_f.pow(8)
+            * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
         let numer = numer1 + numer2;
         let denom1 = (x().pow(32usize) - 1);
         let denom2: Vec<Polynomial> = (20..32).into_iter().map(|i| x() - g.pow(i)).collect();
@@ -321,14 +512,35 @@ mod test {
         let mut test_channel: Channel = Channel::new();
         let cp_test = get_CP(p0.clone(), p1.clone(), &mut test_channel);
         let cp_test_degree = cp_test.degree();
-        assert_eq!(cp_test.degree(), 140, "The degree of cp is {cp_test_degree} when it should be 140.");
+        assert_eq!(
+            cp_test.degree(),
+            140,
+            "The degree of cp is {cp_test_degree} when it should be 140."
+        );
 
         let mut channel = Channel::new();
-        let (cp, cp_evaluation) = cp_eval(p0.clone(), p1.clone(), eval_domain.clone(), &mut channel);
+        let (cp, cp_evaluation) =
+            cp_eval(p0.clone(), p1.clone(), eval_domain.clone(), &mut channel);
         let cp_merkle: MerkleTree = MerkleTree::new(cp_evaluation.clone());
         channel.send(cp_merkle.root());
-        assert_eq!(cp_merkle.root(), "1a597404307c5e3032e6932e8f7d6be23c546374ff2b914fdff5a38915e0ccef", "Merkle tree root is wrong.");
+        assert_eq!(
+            cp_merkle.root(),
+            "1a597404307c5e3032e6932e8f7d6be23c546374ff2b914fdff5a38915e0ccef",
+            "Merkle tree root is wrong."
+        );
     }
 
-    
+    #[test]
+    fn test_case_two_trace_length() {
+        let f1 = |x: FieldElement| x.pow(8);
+        let f2 = |x: FieldElement| x.pow(2);
+        let x0 = FieldElement::new(2);
+        let n1 = 21;
+        let trace_1 = generate_trace(f1, x0, n1);
+
+        let n2 = 61;
+        let trace_2 = generate_trace(f2, x0, n2);
+
+        assert_eq!(trace_1.last(), trace_2.last());
+    }
 }
