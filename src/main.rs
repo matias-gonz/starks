@@ -20,6 +20,23 @@ fn generate_trace(
     trace
 }
 
+fn generate_trace_3(
+    a0: FieldElement,
+    n: usize,
+) -> Vec<FieldElement> {
+    let mut trace = Vec::with_capacity(n);
+    trace.push(a0);
+    for i in 1..n {
+        let a = *trace.last().unwrap();
+        if i % 2 == 0 {
+            trace.push(a.pow(4));
+        } else {
+            trace.push(a.pow(2));
+        }
+    }
+    trace
+}
+
 fn generate_generator() -> Vec<FieldElement> {
     let pow = 5;
     let generator_size = 2usize.pow(pow);
@@ -155,7 +172,7 @@ fn case_1() {
     println!("Let's interpolate the Polynomial");
     let mut xs: Vec<FieldElement> = G.into_iter().rev().skip(11).rev().collect();
     let f: Polynomial = Polynomial::interpolate(&xs, &trace);
-    for i in 0..(20) {
+    for i in 0..(21) {
         println!("X: {:?} -> Trace: {:?}", xs[i], trace[i]);
     }
 
@@ -276,7 +293,7 @@ fn case_2() {
     println!("Degree of den p0: {:?}", Polynomial::degree(&denom0));
     println!("Degree of p0: {:?}", Polynomial::degree(&p0));
 
-    println!("Evaluate second constraint: (f(g.x) - (f(x))^8)) / (x - g ^ 0) ... (x - g ^ 19)");
+    println!("Evaluate second constraint: (f(g.x) - (f(x))^2)) / (x - g ^ 0) ... (x - g ^ 39)");
     let numer1: Polynomial = f(x() * g);
     let numer2: Polynomial =
         f.pow(2) * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
@@ -318,9 +335,67 @@ fn case_2() {
     println!("{:?}", channel.proof);
 }
 
+fn case_3() {
+    println!("First we generate the trace. a0 is 2 and then we calculate the first 61 elements an+1 = an^2");
+    let x0 = FieldElement::new(2);
+    let n = 41;
+    let trace = generate_trace_3(x0, n);
+    println!("Trace is {:?}", trace);
+
+    println!("Now we calculate a suitable generator g modulo 3221225473");
+    let pow = 6;
+    let generator_size = 2usize.pow(pow);
+    let g = FieldElement::generator().pow(3 * 2usize.pow(30 - pow));
+    println!("g is {:?}", g);
+    let G: Vec<FieldElement> = (0..generator_size).into_iter().map(|i| g.pow(i)).collect();
+    let mut b = FieldElement::one();
+    for i in 0..(generator_size - 1) {
+        println!("b is {:?} and G[i] is {:?}", b, G[i]);
+        b = b * g;
+    }
+    if b * g == FieldElement::one() {
+        println!("Success!");
+    } else {
+        println!("g is of order > 61");
+    }
+
+    println!("Let's interpolate the Polynomial");
+    let mut xs: Vec<FieldElement> = G.into_iter().rev().skip(23).rev().collect();
+    let f: Polynomial = Polynomial::interpolate(&xs, &trace);
+    for i in 0..(41) {
+        println!("X: {:?} -> Trace: {:?}", xs[i], trace[i]);
+    }
+
+    println!("Evaluate on a larger domain (8 times larger)");
+    let eval_domain: Vec<FieldElement> = generate_larger_domain();
+    let interpolated_f: Polynomial = Polynomial::interpolate(&xs, &trace);
+    let interpolated_f_eval: Vec<FieldElement> = eval_domain
+        .clone()
+        .into_iter()
+        .map(|d| interpolated_f.clone().eval(d))
+        .collect();
+    let hashed = digest(format!("{:?}", interpolated_f_eval));
+
+    println!("Evaluate first constraint that if f(x) - 2 = 0");
+    let numer0: Polynomial = f.clone() - FieldElement::new(2);
+    let denom0: Polynomial = x() - FieldElement::one();
+    let p0: Polynomial = numer0.clone() / denom0.clone();
+    println!("The result of the division is a polynomial: {:?}", p0);
+    println!("Degree of num p0: {:?}", Polynomial::degree(&numer0));
+    println!("Degree of den p0: {:?}", Polynomial::degree(&denom0));
+    println!("Degree of p0: {:?}", Polynomial::degree(&p0));
+
+    println!("Evaluate second constraint");
+    
+}
+
 fn main() {
-    //case_1();
+    println!("CASE 1");
+    case_1();
+    println!("CASE 2");
     case_2();
+    println!("CASE 3");
+    case_3();
 }
 
 #[cfg(test)]
