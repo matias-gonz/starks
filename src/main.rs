@@ -1,3 +1,5 @@
+use std::{mem::size_of_val, time::SystemTime};
+
 use sha256::digest;
 use starks::{
     channel::Channel,
@@ -175,7 +177,7 @@ fn decommit_on_query(
     decommit_on_fri_layers(idx, channel, fri_layers, fri_merkles);
 }
 
-fn case_1() {
+fn case_1() -> Vec<String> {
     let mut channel = Channel::new();
     // First generate the trace. a0 is 2 and calculate the first 21 elements with an+1 = an^8
     let f = |x: FieldElement| x.pow(8);
@@ -248,10 +250,11 @@ fn case_1() {
             fri_merkles.clone(),
         );
     }
-    println!("{:?}", channel.proof);
+
+    channel.proof
 }
 
-fn case_2() {
+fn case_2() -> Vec<String> {
     let mut channel = Channel::new();
     // First we generate the trace. a0 is 2 and then we calculate the first 61 elements an+1 = an^2
     let f = |x: FieldElement| x.pow(2);
@@ -324,7 +327,8 @@ fn case_2() {
             fri_merkles.clone(),
         );
     }
-    println!("{:?}", channel.proof);
+
+    channel.proof
 }
 
 fn case_3() {
@@ -414,12 +418,32 @@ fn case_3() {
     println!("Degree of p1: {:?}", Polynomial::degree(&p2));
 }
 
+fn calculate_size_of_proof(proof: &[String]) -> usize {
+    let mut total_size = 0;
+    for p in proof {
+        total_size += size_of_val(p);
+    }
+    total_size
+}
+
 fn main() {
-    println!("CASE 1");
-    case_1();
-    println!("CASE 2");
-    case_2();
-    println!("CASE 3");
+    println!("Case 1: an+1 = an^8");
+    let start_time_1 = SystemTime::now();
+    let proof_1 = case_1();
+    let end_time_1 = SystemTime::now();
+    let computation_time_1 = end_time_1.duration_since(start_time_1).unwrap();
+    let proof_size_1 = calculate_size_of_proof(&proof_1);
+    println!("Proof size: {:?}", proof_size_1);
+    println!("Computation time: {:?}", computation_time_1);
+
+    println!("Case 2: an+1 = an^8");
+    let start_time_2 = SystemTime::now();
+    let proof_2 = case_2();
+    let end_time_2 = SystemTime::now();
+    let computation_time_2 = end_time_2.duration_since(start_time_2).unwrap();
+    let proof_size_2 = calculate_size_of_proof(&proof_2);
+    println!("Proof size: {:?}", proof_size_2);
+    println!("Computation time: {:?}", computation_time_2);
     //case_3();
 }
 
