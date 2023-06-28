@@ -385,7 +385,33 @@ fn case_3() {
     println!("Degree of den p0: {:?}", Polynomial::degree(&denom0));
     println!("Degree of p0: {:?}", Polynomial::degree(&p0));
 
-    println!("Evaluate second constraint");
+    println!("Evaluate second constraint (for odd numbers)");
+    let numer1_c1: Polynomial = f(x() * g);
+    let numer2_c1: Polynomial =
+        f.pow(2) * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
+    let numer_c1 = numer1_c1 + numer2_c1;
+    let denom1_c1 = (x().pow(32usize) - 1);
+    let denom2_c1: Vec<Polynomial> = (40..64).into_iter().filter(|&num| num % 2 == 0).map(|i| x() - g.pow(i)).collect();
+    let denom2_c1 = Polynomial::prod(&denom2_c1);
+    let denom_c1 = (denom1_c1 / denom2_c1);
+    let p1: Polynomial = numer_c1.clone() / denom_c1.clone();
+    println!("Degree of num p1: {:?}", Polynomial::degree(&numer_c1));
+    println!("Degree of den p1: {:?}", Polynomial::degree(&denom_c1));
+    println!("Degree of p1: {:?}", Polynomial::degree(&p1));
+
+    println!("Evaluate second constraint (for even numbers)");
+    let numer1_c2: Polynomial = f(x() * g);
+    let numer2_c2: Polynomial =
+        f.pow(4) * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
+    let numer_c2 = numer1_c2 + numer2_c2;
+    let denom1_c2 = (x().pow(32usize) - 1);
+    let denom2_c2: Vec<Polynomial> = (40..64).into_iter().filter(|&num| num % 2 != 0).map(|i| x() - g.pow(i)).collect();
+    let denom2_c2 = Polynomial::prod(&denom2_c2);
+    let denom_c2 = (denom1_c2 / denom2_c2);
+    let p2: Polynomial = numer_c2.clone() / denom_c2.clone();
+    println!("Degree of num p1: {:?}", Polynomial::degree(&numer_c2));
+    println!("Degree of den p1: {:?}", Polynomial::degree(&denom_c2));
+    println!("Degree of p1: {:?}", Polynomial::degree(&p2));
     
 }
 
