@@ -434,7 +434,7 @@ fn case_3() {
     println!("Degree of den p0: {:?}", Polynomial::degree(&denom0));
     println!("Degree of p0: {:?}", Polynomial::degree(&p0));
 
-    println!("Evaluate second constraint");
+    println!("Evaluate second constraint (for odd numbers)");
     let numer1_c1: Polynomial = f(x() * g);
     let numer2_c1: Polynomial =
         f.pow(2) * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
