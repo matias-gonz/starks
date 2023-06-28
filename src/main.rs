@@ -274,7 +274,7 @@ fn case_2() -> Vec<String> {
     let H: Vec<FieldElement> = (0..n * 2_usize.pow(blowup)).map(|i| h.pow(i)).collect();
     let eval_domain: Vec<FieldElement> = H.into_iter().map(|x| w * x).collect();
 
-    // Interpolate the trace on the first 21 elements of G
+    // Interpolate the trace on the first 61 elements of G
     let interpolated_f: Polynomial = Polynomial::interpolate(&G, &trace);
     let interpolated_f_eval: Vec<FieldElement> = eval_domain
         .clone()
@@ -291,7 +291,7 @@ fn case_2() -> Vec<String> {
     let denom0 = x() - FieldElement::one();
     let p0 = numer0 / denom0;
 
-    // Second constraint: (f(g.x) - (f(x))^2)) / (x - g ^ 0) ... (x - g ^ 39)");
+    // Second constraint: (f(g.x) - (f(x))^2)) / (x - g ^ 0) ... (x - g ^ 59)");
     let minus_one = FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
     let numer1: Polynomial = interpolated_f(x() * g);
     let numer2: Polynomial = interpolated_f.pow(2) * minus_one;
@@ -444,6 +444,7 @@ fn main() {
     let proof_size_2 = calculate_size_of_proof(&proof_2);
     println!("Proof size: {:?}", proof_size_2);
     println!("Computation time: {:?}", computation_time_2);
+
     //case_3();
 }
 
