@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use rand::Rng;
 
 /// An implementation of field elements from F_(3 * 2**30 + 1).
@@ -195,6 +197,12 @@ impl std::ops::Neg for FieldElement {
 
     fn neg(self) -> Self::Output {
         FieldElement::zero() - self
+    }
+}
+
+impl Display for FieldElement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", usize::from(*self))
     }
 }
 

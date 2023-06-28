@@ -2,6 +2,7 @@ use crate::field::FieldElement;
 use rs_merkle::algorithms::Sha256;
 use rs_merkle::{self, Hasher};
 
+#[derive(Clone)]
 pub struct MerkleTree {
     inner: rs_merkle::MerkleTree<rs_merkle::algorithms::Sha256>,
 }
@@ -21,5 +22,13 @@ impl MerkleTree {
 
     pub fn root(&self) -> String {
         self.inner.root_hex().unwrap()
+    }
+
+    pub fn get_authentication_path(&self, idx: usize) -> String {
+        let proof = self.inner.proof(&[idx]);
+        proof
+            .proof_hashes_hex()
+            .iter()
+            .fold(String::new(), |h1, h2| h1 + h2)
     }
 }

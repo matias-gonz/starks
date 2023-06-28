@@ -20,10 +20,7 @@ fn generate_trace(
     trace
 }
 
-fn generate_trace_3(
-    a0: FieldElement,
-    n: usize,
-) -> Vec<FieldElement> {
+fn generate_trace_3(a0: FieldElement, n: usize) -> Vec<FieldElement> {
     let mut trace = Vec::with_capacity(n);
     trace.push(a0);
     for i in 1..n {
@@ -116,7 +113,6 @@ fn fri_commit(
     Vec<Vec<FieldElement>>,
     Vec<Vec<FieldElement>>,
     Vec<MerkleTree>,
-    Channel,
 ) {
     let mut fri_polys: Vec<Polynomial> = vec![cp];
     let mut fri_domains: Vec<Vec<FieldElement>> = vec![domain];
@@ -135,13 +131,53 @@ fn fri_commit(
     }
     channel.send(fri_polys.last().unwrap().0[0].0.to_string());
 
-    (
-        fri_polys,
-        fri_domains,
-        fri_layers,
-        fri_merkles,
-        channel.clone(),
-    )
+    (fri_polys, fri_domains, fri_layers, fri_merkles)
+}
+
+fn decommit_on_fri_layers(
+    idx: usize,
+    channel: &mut Channel,
+    fri_layers: Vec<Vec<FieldElement>>,
+    fri_merkles: Vec<MerkleTree>,
+) {
+    let mut fri_layers = fri_layers;
+    let mut fri_merkles = fri_merkles;
+    fri_layers.pop().unwrap();
+    fri_merkles.pop().unwrap();
+
+    for (layer, merkle) in fri_layers.iter().zip(fri_merkles) {
+        let length = layer.len();
+        let idx = idx % length;
+        let sib_idx = (idx + length / 2) % length;
+        //channel.send(layer[idx].to_string());
+        channel.send(merkle.get_authentication_path(idx));
+        //channel.send(layer[sib_idx].to_string());
+        channel.send(merkle.get_authentication_path(sib_idx));
+    }
+    let last_fri_layer = fri_layers.last().unwrap();
+    //channel.send(last_fri_layer[0].to_string());
+}
+
+fn decommit_on_query(
+    idx: usize,
+    channel: &mut Channel,
+    f_eval: Vec<FieldElement>,
+    f_merkle: MerkleTree,
+    fri_layers: Vec<Vec<FieldElement>>,
+    fri_merkles: Vec<MerkleTree>,
+) {
+    let f_eval_len = f_eval.len();
+    assert!(
+        idx + 16 < f_eval_len,
+        "query index: {idx} is out of range. Length of layer: {f_eval_len}."
+    );
+    channel.send(f_eval[idx].to_string()); // f(x).
+    channel.send(f_merkle.get_authentication_path(idx)); // auth path for f(x).
+    channel.send(f_eval[idx + 8].to_string()); // f(gx).
+    channel.send(f_merkle.get_authentication_path(idx + 8)); // auth path for f(gx).
+    channel.send(f_eval[idx + 16].to_string()); // f(g^2x).
+    channel.send(f_merkle.get_authentication_path(idx + 16)); // auth path for f(g^2x).
+    decommit_on_fri_layers(idx, channel, fri_layers, fri_merkles);
 }
 
 fn case_1() {
@@ -209,18 +245,7 @@ fn case_1() {
     println!("Degree of den p1: {:?}", Polynomial::degree(&denom));
     println!("Degree of p1: {:?}", Polynomial::degree(&p1));
 
-    println!("Composition Polynomial");
-    let mut test_channel: Channel = Channel::new();
-    let cp0: Polynomial = get_CP(p0.clone(), p1.clone(), &mut test_channel);
-    let cp_test_degree = cp0.degree();
-    assert_eq!(
-        cp0.degree(),
-        140,
-        "The degree of cp is {cp_test_degree} when it should be 140."
-    );
-
     println!("Commit on the Composition Polynomial");
-
     let mut channel = Channel::new();
     let (cp, cp_evaluation) = cp_eval(p0.clone(), p1.clone(), eval_domain.clone(), &mut channel);
     let cp_merkle: MerkleTree = MerkleTree::new(cp_evaluation.clone());
@@ -232,13 +257,25 @@ fn case_1() {
     );
 
     let next_domain = next_fri_domain(eval_domain.clone());
-    let (fri_polys, fri_domains, fri_layers, fri_merkles, channel) = fri_commit(
+    let (fri_polys, fri_domains, fri_layers, fri_merkles) = fri_commit(
         cp,
         eval_domain.clone(),
         cp_evaluation.clone(),
-        cp_merkle,
+        cp_merkle.clone(),
         &mut channel,
     );
+
+    let cp_eval_len = cp_evaluation.len();
+    for _ in (0..32) {
+        decommit_on_query(
+            channel.receive_random_int(0, cp_eval_len - 17, true),
+            &mut channel,
+            cp_evaluation.clone(),
+            cp_merkle.clone(),
+            fri_layers.clone(),
+            fri_merkles.clone(),
+        );
+    }
     println!("{:?}", channel.proof);
 }
 
@@ -325,13 +362,25 @@ fn case_2() {
     channel.send(cp_merkle.root());
 
     let next_domain = next_fri_domain(eval_domain.clone());
-    let (fri_polys, fri_domains, fri_layers, fri_merkles, channel) = fri_commit(
+    let (fri_polys, fri_domains, fri_layers, fri_merkles) = fri_commit(
         cp,
         eval_domain.clone(),
         cp_evaluation.clone(),
-        cp_merkle,
+        cp_merkle.clone(),
         &mut channel,
     );
+
+    let cp_eval_len = cp_evaluation.len();
+    for _ in (0..32) {
+        decommit_on_query(
+            channel.receive_random_int(0, cp_eval_len - 17, true),
+            &mut channel,
+            cp_evaluation.clone(),
+            cp_merkle.clone(),
+            fri_layers.clone(),
+            fri_merkles.clone(),
+        );
+    }
     println!("{:?}", channel.proof);
 }
 
@@ -385,7 +434,7 @@ fn case_3() {
     println!("Degree of den p0: {:?}", Polynomial::degree(&denom0));
     println!("Degree of p0: {:?}", Polynomial::degree(&p0));
 
-    println!("Evaluate second constraint (for odd numbers)");
+    println!("Evaluate second constraint");
     let numer1_c1: Polynomial = f(x() * g);
     let numer2_c1: Polynomial =
         f.pow(2) * FieldElement::new((-1 + FieldElement::k_modulus() as i128) as usize);
